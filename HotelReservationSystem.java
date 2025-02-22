@@ -1,8 +1,4 @@
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Scanner;
+import java.util.*;
 
 class Room {
     private int roomNumber;
@@ -23,15 +19,15 @@ class Room {
         return pricePerDay;
     }
 
-    public boolean isReserved() {
+    public synchronized boolean isReserved() {
         return isReserved;
     }
 
-    public void setReserved(boolean reserved) {
+    public synchronized void setReserved(boolean reserved) {
         isReserved = reserved;
     }
 
-    public String bookRoom() {
+    public synchronized String bookRoom() {
         if (!isReserved) {
             isReserved = true;
             return "Room " + roomNumber + " has been successfully booked.";
@@ -40,7 +36,7 @@ class Room {
         }
     }
 
-    public String cancelRoom() {
+    public synchronized String cancelRoom() {
         if (isReserved) {
             isReserved = false;
             return "Room " + roomNumber + " has been successfully canceled.";
@@ -87,8 +83,8 @@ class Reservation {
 }
 
 class Hotel {
-    private List<Room> rooms;
-    private Map<Integer, Reservation> reservations;
+    private final List<Room> rooms;
+    private final Map<Integer, Reservation> reservations;
 
     public Hotel() {
         rooms = new ArrayList<>();
@@ -108,35 +104,55 @@ class Hotel {
         return null;
     }
 
-    public String makeReservation(String guestName, int roomNumber, int numberOfDays, String phoneNumber) {
-        Room room = findRoom(roomNumber);
-        if (room != null) {
-            String bookingStatus = room.bookRoom();
-            if (bookingStatus.contains("successfully booked")) {
-                Reservation reservation = new Reservation(room, guestName, numberOfDays);
-                reservations.put(roomNumber, reservation);
-                return reservation.toString() + "\nTotal cost: $" + reservation.calculateTotalCost();
-            } else {
-                return bookingStatus;
+    public synchronized void makeReservation(String guestName, int roomNumber, int numberOfDays) {
+        Thread bookingThread = new Thread(() -> {
+            try {
+                Room room = findRoom(roomNumber);
+                if (room == null) {
+                    System.out.println("Room " + roomNumber + " not found.");
+                    return;
+                }
+
+                synchronized (room) {
+                    String bookingStatus = room.bookRoom();
+                    if (bookingStatus.contains("successfully booked")) {
+                        Reservation reservation = new Reservation(room, guestName, numberOfDays);
+                        reservations.put(roomNumber, reservation);
+                        System.out.println(reservation.toString() + "\nTotal cost: $" + reservation.calculateTotalCost());
+                    } else {
+                        System.out.println(bookingStatus);
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("Error while booking room: " + e.getMessage());
             }
-        } else {
-            return "Room " + roomNumber + " not found.";
-        }
+        });
+        bookingThread.start();
     }
 
-    public String cancelReservation(int roomNumber) {
-        Room room = findRoom(roomNumber);
-        if (room != null) {
-            if (reservations.containsKey(roomNumber)) {
-                Reservation reservation = reservations.remove(roomNumber);
-                room.cancelRoom();
-                return "Reservation canceled for " + reservation.getRoom() + ".";
-            } else {
-                return "No reservation found for room " + roomNumber + ".";
+    public synchronized void cancelReservation(int roomNumber) {
+        Thread cancelThread = new Thread(() -> {
+            try {
+                Room room = findRoom(roomNumber);
+                if (room == null) {
+                    System.out.println("Room " + roomNumber + " not found.");
+                    return;
+                }
+
+                synchronized (room) {
+                    if (reservations.containsKey(roomNumber)) {
+                        Reservation reservation = reservations.remove(roomNumber);
+                        room.cancelRoom();
+                        System.out.println("Reservation canceled for " + reservation.getRoom() + ".");
+                    } else {
+                        System.out.println("No reservation found for room " + roomNumber + ".");
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("Error while canceling reservation: " + e.getMessage());
             }
-        } else {
-            return "Room " + roomNumber + " not found.";
-        }
+        });
+        cancelThread.start();
     }
 
     public void listAvailableRooms() {
@@ -168,47 +184,51 @@ public class HotelReservationSystem {
 
         boolean continueReservation = true;
         while (continueReservation) {
-            System.out.println("\nWelcome to the Hotel Reservation System!");
-            System.out.println("1. List available rooms");
-            System.out.println("2. List booked rooms");
-            System.out.println("3. Make a reservation");
-            System.out.println("4. Cancel a reservation");
-            System.out.println("5. Exit");
-            System.out.print("Please select an option: ");
-            int choice = scanner.nextInt();
-            scanner.nextLine(); // Consume the newline character
+            try {
+                System.out.println("\nWelcome to the Hotel Reservation System!");
+                System.out.println("1. List available rooms");
+                System.out.println("2. List booked rooms");
+                System.out.println("3. Make a reservation");
+                System.out.println("4. Cancel a reservation");
+                System.out.println("5. Exit");
+                System.out.print("Please select an option: ");
 
-            switch (choice) {
-                case 1:
-                    hotel.listAvailableRooms();
-                    break;
-                case 2:
-                    hotel.listBookedRooms();
-                    break;
-                case 3:
-                    System.out.print("Enter your name: ");
-                    String guestName = scanner.nextLine();
-                    System.out.print("Enter room number to reserve (101-105): ");
-                    int roomNumber = scanner.nextInt();
-                    System.out.print("Enter number of days: ");
-                    int numberOfDays = scanner.nextInt();
-                    System.out.print("Enter your phone number: ");
-                    String phoneNumber = scanner.next();
-                    String reservationDetails = hotel.makeReservation(guestName, roomNumber, numberOfDays, phoneNumber);
-                    System.out.println(reservationDetails);
-                    break;
-                case 4:
-                    System.out.print("Enter room number to cancel reservation (101-105): ");
-                    int cancelRoomNumber = scanner.nextInt();
-                    String cancelStatus = hotel.cancelReservation(cancelRoomNumber);
-                    System.out.println(cancelStatus);
-                    break;
-                case 5:
-                    continueReservation = false;
-                    System.out.println("Thank you for using the Hotel Reservation System!");
-                    break;
-                default:
-                    System.out.println("Invalid option. Please try again.");
+                int choice = scanner.nextInt();
+                scanner.nextLine(); // Consume the newline character
+
+                switch (choice) {
+                    case 1:
+                        hotel.listAvailableRooms();
+                        break;
+                    case 2:
+                        hotel.listBookedRooms();
+                        break;
+                    case 3:
+                        System.out.print("Enter your name: ");
+                        String guestName = scanner.nextLine();
+                        System.out.print("Enter room number to reserve (101-105): ");
+                        int roomNumber = scanner.nextInt();
+                        System.out.print("Enter number of days: ");
+                        int numberOfDays = scanner.nextInt();
+                        hotel.makeReservation(guestName, roomNumber, numberOfDays);
+                        break;
+                    case 4:
+                        System.out.print("Enter room number to cancel reservation (101-105): ");
+                        int cancelRoomNumber = scanner.nextInt();
+                        hotel.cancelReservation(cancelRoomNumber);
+                        break;
+                    case 5:
+                        continueReservation = false;
+                        System.out.println("Thank you for using the Hotel Reservation System!");
+                        break;
+                    default:
+                        System.out.println("Invalid option. Please try again.");
+                }
+            } catch (InputMismatchException e) {
+                System.out.println("Invalid input! Please enter a number.");
+                scanner.nextLine(); // Clear the invalid input
+            } catch (Exception e) {
+                System.out.println("An unexpected error occurred: " + e.getMessage());
             }
         }
         scanner.close();
